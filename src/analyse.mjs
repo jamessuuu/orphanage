@@ -59,6 +59,9 @@ export function analyse(input) {
     error: rec.error ?? null,
     blockedByRobots: !!rec.blockedByRobots,
     fetched: !!rec.fetched,
+    canonical: rec.canonical ?? null,
+    contentType: rec.contentType ?? null,
+    isHtml: rec.isHtml !== false,
   }));
   const byUrl = new Map(pageEntries.map((p) => [p.url, p]));
 
@@ -72,7 +75,31 @@ export function analyse(input) {
     .sort();
 
   // --- Unlisted: reached and live via crawling, absent from the sitemap. --
-  const unlisted = [...fetched200].filter((u) => !sitemapSet.has(u)).sort();
+  // A page whose rel=canonical points elsewhere is asking to be consolidated,
+  // so it is not missing from the sitemap; it is deliberately not a separate
+  // entry. Splitting these out rather than counting them turned 40 findings
+  // into 0 real ones on the first real site tested (agentjames, 2026-09-05),
+  // where every /console?c=... permalink canonicalises to /console. Reporting
+  // those as unlisted would bury any genuine finding under query-string noise.
+  const canonicalisedElsewhere = [...fetched200]
+    .filter((u) => !sitemapSet.has(u))
+    .filter((u) => { const p = byUrl.get(u); return p && p.canonical && normalize(p.canonical) !== u; })
+    .map((u) => ({ url: u, canonical: byUrl.get(u).canonical }))
+    .sort((a, b) => a.url.localeCompare(b.url));
+  const canonicalisedSet = new Set(canonicalisedElsewhere.map((x) => x.url));
+  // Non-HTML resources are split out for the same reason canonicalised
+  // pages are. A sitemap lists indexable pages. Reporting llms.txt,
+  // agent.json or resume.md as "missing from your sitemap" would be advice
+  // that makes the site worse, and wrong advice is the one thing this tool
+  // must never produce. A PDF is a genuine judgement call, so these are
+  // reported with their content type rather than silently dropped.
+  const notInSitemap = [...fetched200].filter((u) => !sitemapSet.has(u) && !canonicalisedSet.has(u));
+  const unlistedNonHtml = notInSitemap
+    .filter((u) => { const p = byUrl.get(u); return p && p.isHtml === false; })
+    .map((u) => ({ url: u, contentType: byUrl.get(u).contentType }))
+    .sort((x, y) => x.url.localeCompare(y.url));
+  const nonHtmlSet = new Set(unlistedNonHtml.map((x) => x.url));
+  const unlisted = notInSitemap.filter((u) => !nonHtmlSet.has(u)).sort();
 
   // --- Broken internal links: a fetched page that errored or 4xx/5xx'd. ---
   const brokenLinks = pageEntries
@@ -153,6 +180,8 @@ export function analyse(input) {
     },
     orphans,
     unlisted,
+    canonicalisedElsewhere,
+    unlistedNonHtml,
     brokenLinks,
     redirectChains,
     deepPages,

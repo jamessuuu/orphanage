@@ -42,6 +42,44 @@ test('unlisted: crawled and live, but absent from the sitemap', () => {
   assert.deepEqual(findings.unlisted, ['https://example.com/secret']);
 });
 
+test('a page canonicalised elsewhere is NOT unlisted, it is consolidated', () => {
+  // Found on the first real site this was pointed at (agentjames, 2026-09-05):
+  // 40 "unlisted" findings, and almost every one was a /console?c=... command
+  // permalink that declares rel=canonical -> /console. Those pages are asking
+  // to be consolidated, so calling them missing from the sitemap is noise, and
+  // 40 pieces of noise hide the one real finding underneath them.
+  const findings = analyse({
+    root: ROOT,
+    pages: {
+      [ROOT]: page({ outboundLinks: ['https://example.com/c?x=1', 'https://example.com/real'] }),
+      'https://example.com/c?x=1': page({ inboundFrom: [ROOT], canonical: 'https://example.com/c' }),
+      'https://example.com/real': page({ inboundFrom: [ROOT] }),
+    },
+    sitemapUrls: [ROOT],
+  });
+  assert.deepEqual(findings.unlisted, ['https://example.com/real'], 'only the genuinely unlisted page remains');
+  assert.deepEqual(
+    findings.canonicalisedElsewhere,
+    [{ url: 'https://example.com/c?x=1', canonical: 'https://example.com/c' }],
+    'the consolidated page is still reported, in its own bucket, never silently dropped'
+  );
+});
+
+test('a self-referencing canonical does not exempt a page from being unlisted', () => {
+  // The obvious way to break the fix above: if any canonical at all excused a
+  // page, every page with a normal self-canonical would vanish from the report.
+  const findings = analyse({
+    root: ROOT,
+    pages: {
+      [ROOT]: page({ outboundLinks: ['https://example.com/self'] }),
+      'https://example.com/self': page({ inboundFrom: [ROOT], canonical: 'https://example.com/self' }),
+    },
+    sitemapUrls: [ROOT],
+  });
+  assert.deepEqual(findings.unlisted, ['https://example.com/self']);
+  assert.deepEqual(findings.canonicalisedElsewhere, []);
+});
+
 test('a 404/500 fetched page is a broken internal link, with its linkers listed', () => {
   const findings = analyse({
     root: ROOT,

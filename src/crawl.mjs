@@ -37,6 +37,24 @@ function stripFragment(url) {
 // regex-based scan, not an HTML parser — it finds ordinary anchor tags in
 // served markup. It cannot and does not try to see links injected by
 // client-side JavaScript; see the README Limitations section.
+/**
+ * The page's declared canonical, absolute, or null.
+ *
+ * A page that points its canonical somewhere else is asking search engines to
+ * consolidate it, so it is NOT a page missing from the sitemap. Without this,
+ * every query-string variant of one route is reported as a separate unlisted
+ * page. Measured on agentjames.vercel.app 2026-09-05: 40 'unlisted' findings,
+ * almost all of them /console?c=... permalinks that all declare
+ * rel=canonical -> /console. That is 40 pieces of noise hiding any real finding.
+ */
+export function extractCanonical(html, baseUrl) {
+  const m = String(html ?? '').match(/<link\b[^>]*rel=["']canonical["'][^>]*>/i);
+  if (!m) return null;
+  const href = m[0].match(/href=["']([^"']+)["']/i);
+  if (!href) return null;
+  try { return new URL(href[1], baseUrl).toString(); } catch { return null; }
+}
+
 export function extractLinks(html, baseUrl, origin) {
   const hrefRe = /<a\b[^>]*?\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>]+))/gi;
   const out = new Set();
@@ -224,8 +242,18 @@ export async function crawl(options) {
     record.redirectChain = chain;
     record.error = fetchError;
 
+    if (!fetchError && finalRes) {
+      // Recorded so the analysis can tell a page from a machine endpoint.
+      // A sitemap lists indexable PAGES; telling someone to add llms.txt or
+      // agent.json to theirs would be wrong advice.
+      record.contentType = (finalRes.headers && typeof finalRes.headers.get === 'function' ? finalRes.headers.get('content-type') : null) ?? null;
+      record.isHtml = looksLikeHtml(finalRes);
+    }
+
     if (!fetchError && finalRes && finalRes.status === 200 && looksLikeHtml(finalRes)) {
       const body = await finalRes.text();
+      record.canonical = extractCanonical(body, currentUrl);
+      record.selfCanonical = record.canonical === null || record.canonical === currentUrl;
       const links = extractLinks(body, currentUrl, origin);
       for (const link of links) {
         record.outboundLinks.add(link);
@@ -253,6 +281,9 @@ export async function crawl(options) {
       error: rec.error,
       blockedByRobots: rec.blockedByRobots,
       fetched: rec.fetched,
+      canonical: rec.canonical ?? null,
+      contentType: rec.contentType ?? null,
+      isHtml: rec.isHtml ?? false,
     };
   }
 
