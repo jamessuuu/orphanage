@@ -175,6 +175,14 @@ node bin/orphanage.mjs http://127.0.0.1:<the port it printed>
 - **This tool does not check per-crawler access or JS-rendering gaps.**
   That is the explicit job of a separate, sibling tool.
 
+## Demo
+
+A generated report against this project's own fixture site is committed at
+[`site/report.html`](site/report.html) &mdash; open it in a browser for a real demo
+of the report format, with all six finding categories populated at once. It
+was produced by running the exact commands in `fixtures/site/server.mjs`'s
+own header comment, and it passes `orphanage --check` like any other report.
+
 ## License
 
 MIT. See `LICENSE`.

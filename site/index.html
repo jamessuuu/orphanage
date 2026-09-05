@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>orphanage: a crawl-graph auditor that almost buried one real finding under forty fake ones</title>
+<meta name="description" content="orphanage crawls a site the way a crawler does, reads its sitemap separately, and reports where the two disagree: orphans, unlisted pages, broken internal links, redirect chains, deep pages, dead sitemap entries."/>
+<link rel="canonical" href="https://orphanage.vercel.app/"/>
+<meta property="og:title" content="orphanage"/>
+<meta property="og:description" content="A crawl-graph and orphan-page auditor that almost buried its one real finding under forty fake ones."/>
+<meta property="og:type" content="website"/>
+<style>
+  /* One type scale, ratio 1.25. One accent. No webfonts, so the page fetches
+     nothing when it opens, which is the same claim the tool itself makes. */
+  :root {
+    --bg: #fbfaf7;
+    --panel: #ffffff;
+    --ink: #1a1a18;
+    --dim: #5c5b55;
+    --rule: #e2ded4;
+    --accent: #9a5b00;
+    --pass-bg: #eaf6ec; --pass-ink: #116329;
+    --fail-bg: #fdecec; --fail-ink: #8a1f1f;
+    --fs-meta: 0.8rem;
+    --fs-body: 1rem;
+    --fs-head: 1.25rem;
+    --fs-title: 1.5625rem;
+    --fs-hero: 1.953rem;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#16171a; --panel:#1d1f23; --ink:#eceae4; --dim:#a3a199; --rule:#2e3138; --accent:#e0a458; --pass-bg:#12291a; --pass-ink:#7fd39b; --fail-bg:#2b1717; --fail-ink:#f0908c; }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: ui-serif, Georgia, "Times New Roman", serif;
+    font-size: var(--fs-body); line-height: 1.65;
+  }
+  code, pre, .mono { font-family: ui-monospace, "SF Mono", Consolas, "Liberation Mono", monospace; }
+  .wrap { max-width: 46rem; margin: 0 auto; padding: 4rem 1.25rem 5rem; }
+  header { border-bottom: 1px solid var(--rule); padding-bottom: 1.75rem; margin-bottom: 2.5rem; }
+  h1 { font-size: var(--fs-hero); line-height: 1.2; margin: 0 0 .5rem; letter-spacing: -0.01em; }
+  h2 { font-size: var(--fs-title); line-height: 1.25; margin: 3rem 0 .75rem; }
+  h3 { font-size: var(--fs-head); margin: 2rem 0 .5rem; }
+  .lede { font-size: var(--fs-head); color: var(--dim); margin: 0; }
+  .meta { font-size: var(--fs-meta); color: var(--dim); }
+  a { color: var(--accent); text-underline-offset: 2px; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  pre {
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 6px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: var(--fs-meta); line-height: 1.6;
+    overflow-wrap: anywhere;
+  }
+  .cta { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1.75rem 0 0; }
+  .btn {
+    display: inline-block; padding: .55rem 1rem; border-radius: 6px;
+    border: 1px solid var(--rule); background: var(--panel); color: var(--ink);
+    text-decoration: none; font-size: var(--fs-meta);
+  }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  @media (prefers-color-scheme: dark) { .btn.primary { color: #16171a; } }
+  .rows { border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; margin: 1.25rem 0; }
+  .row { display: flex; gap: .75rem; align-items: baseline; padding: .7rem 1rem; border-top: 1px solid var(--rule); font-size: var(--fs-meta); flex-wrap: wrap; }
+  .row:first-child { border-top: 0; }
+  .tag { font-size: var(--fs-meta); padding: .1rem .5rem; border-radius: 999px; white-space: nowrap; }
+  .tag.pass { background: var(--pass-bg); color: var(--pass-ink); }
+  .tag.fail { background: var(--fail-bg); color: var(--fail-ink); }
+  ul { padding-left: 1.15rem; }
+  li { margin: .4rem 0; }
+  footer { margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid var(--rule); font-size: var(--fs-meta); color: var(--dim); }
+  @media print { .cta, footer { display: none } body { background: #fff } }
+</style>
+</head>
+<body>
+<main class="wrap">
+
+<header>
+  <h1>orphanage</h1>
+  <p class="lede">Crawls a site the way a crawler does &mdash; following links from the root &mdash; reads the sitemap separately, and reports where the two disagree: orphans, unlisted pages, broken internal links, redirect chains, deep pages, dead sitemap entries.</p>
+  <div class="cta">
+    <a class="btn primary" href="./report.html">See a sample report</a>
+    <a class="btn" href="https://github.com/jamessuuu/orphanage">Source</a>
+  </div>
+  <p class="meta" style="margin-top:1rem">MIT. Zero runtime dependencies. Node 20+.</p>
+</header>
+
+<h2>Forty findings, and every one was noise</h2>
+
+<p>Run against <code>agentjames.vercel.app</code> on 2026-09-05, orphanage crawled the site, read its sitemap, and reported 40 pages the crawl had reached that the sitemap never declared. Every one of those 40 turned out to be noise. Thirty-five were <code>/console?c=...</code> permalinks, each one declaring <code>rel=canonical</code> back to <code>/console</code> &mdash; the same page, forty different query strings. The other five were non-HTML endpoints a sitemap of pages was never going to list: things like <code>llms.txt</code>, <code>agent.json</code>, <code>resume.md</code>, and a CV PDF.</p>
+
+<p>Splitting canonical-consolidated URLs and non-HTML resources into their own buckets took the unlisted count from 40 down to 0. With the noise gone, the one finding that actually mattered became visible: <code>/games</code> is declared in the sitemap and is not reachable by following any link from the homepage.</p>
+
+<p><strong>A tool that buries one real finding under forty false ones is worse than no tool.</strong> That is not a caveat on this project. It is the reason the canonical and content-type buckets exist at all.</p>
+
+<h2>What a report looks like</h2>
+
+<p>Every finding category gets its own section, and an empty one says so in plain language instead of just staying quiet:</p>
+
+<div class="rows">
+  <div class="row"><span class="tag fail">1 found</span> <code class="mono">orphans</code> <span class="meta">in the sitemap, unreachable by following links from the root &mdash; <code>/games</code></span></div>
+  <div class="row"><span class="tag pass">0 found</span> <code class="mono">unlisted</code> <span class="meta">every page the crawl reached is declared in the sitemap</span></div>
+  <div class="row"><span class="tag pass">0 found</span> <code class="mono">broken internal links, redirect chains, deep pages, dead sitemap entries</code> <span class="meta">clean</span></div>
+</div>
+
+<p>The sample linked above is not that run &mdash; it is a small, committed fixture site built to exercise all six finding categories at once, so you can see every section populated without trusting a screenshot.</p>
+
+<h2>The honesty rules</h2>
+
+<ul>
+  <li>If the crawl hits its page cap, the report says so, explicitly, next to the orphan and unlisted findings, because a truncated crawl cannot tell a genuine orphan apart from a page it simply had not reached yet.</li>
+  <li>A page excluded by this tool's own robots.txt compliance is shown as excluded, not counted as broken or orphaned. The tool found a link to it; it chose not to follow it.</li>
+  <li>A dead sitemap entry is only reported for a URL whose live status was actually observed. A sitemap URL that was neither crawled nor separately checked is reported as unknown status, never guessed at.</li>
+</ul>
+
+<h2>The report fetches nothing</h2>
+
+<p>Zero JavaScript, zero network requests, a mobile viewport tag, a print stylesheet, and every collapsible section open by default, because a collapsed <code>&lt;details&gt;</code> disappears entirely from a printed PDF. <code>overflow-wrap: anywhere</code> is set on every URL cell so a long one cannot push the layout wider than a phone screen.</p>
+
+<p><code>orphanage --check &lt;report.html&gt;</code> enforces all of that mechanically, on any report, including one you did not generate.</p>
+
+<h2>Use it</h2>
+
+<pre>node bin/orphanage.mjs https://example.com/
+node bin/orphanage.mjs --check report.html</pre>
+
+<p class="meta">Exit <code>0</code> nothing to report &middot; <code>1</code> a finding was produced, or the report failed its own <code>--check</code>, which is the CI signal &middot; <code>2</code> used wrongly, so nothing was measured.</p>
+
+<h2>What it will not tell you</h2>
+
+<ul>
+  <li>Whether GPTBot, ClaudeBot, or Googlebot specifically can reach a page. This tool crawls once, with one ordinary browser-style User-Agent. A sibling tool, built separately, handles per-crawler access.</li>
+  <li>Anything on a page whose navigation is injected by client-side JavaScript. It sees exactly what a crawler that does not execute JavaScript sees.</li>
+  <li>Whether a page deserves to be indexed. A correctly-orphaned thank-you page still shows up in the orphans list; deciding that is a judgment call for a person, not this tool.</li>
+</ul>
+
+<footer>
+  <p>Built by <a href="https://agentjames.vercel.app/">James Lorenz Santos</a>.
+  Source at <a href="https://github.com/jamessuuu/orphanage">github.com/jamessuuu/orphanage</a>. MIT.</p>
+</footer>
+
+</main>
+</body>
+</html>
