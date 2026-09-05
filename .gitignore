@@ -1,0 +1,13 @@
+node_modules/
+npm-debug.log*
+
+# default CLI output names — generated, not source
+/report.html
+/out.json
+
+# anything explicitly marked as a local scratch report
+*.local.html
+*.local.json
+
+.DS_Store
+Thumbs.db

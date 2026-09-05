@@ -1,0 +1,20 @@
+{
+  "name": "orphanage",
+  "version": "0.1.0",
+  "description": "Crawl-graph and orphan-page auditor. Crawls a site by following links from a root, reads its declared sitemap, and reports the difference: orphans, unlisted pages, broken internal links, redirect chains, hard-to-discover pages, and dead sitemap entries.",
+  "type": "module",
+  "license": "MIT",
+  "author": "James Lorenz Santos",
+  "bin": {
+    "orphanage": "./bin/orphanage.mjs"
+  },
+  "main": "src/analyse.mjs",
+  "scripts": {
+    "test": "node --test tests/**/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
