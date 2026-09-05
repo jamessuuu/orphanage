@@ -16,5 +16,20 @@
     "node": ">=20"
   },
   "dependencies": {},
-  "devDependencies": {}
+  "devDependencies": {},
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jamessuuu/orphanage.git"
+  },
+  "homepage": "https://github.com/jamessuuu/orphanage#readme",
+  "bugs": {
+    "url": "https://github.com/jamessuuu/orphanage/issues"
+  },
+  "sideEffects": false
 }
