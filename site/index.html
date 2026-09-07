@@ -3,154 +3,638 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>orphanage: a crawl-graph auditor that almost buried one real finding under forty fake ones</title>
+<title>orphanage — where your crawl graph and your sitemap disagree</title>
 <meta name="description" content="orphanage crawls a site the way a crawler does, reads its sitemap separately, and reports where the two disagree: orphans, unlisted pages, broken internal links, redirect chains, deep pages, dead sitemap entries."/>
 <link rel="canonical" href="https://orphanage-ten.vercel.app/"/>
 <meta property="og:title" content="orphanage"/>
 <meta property="og:description" content="A crawl-graph and orphan-page auditor that almost buried its one real finding under forty fake ones."/>
 <meta property="og:type" content="website"/>
+<meta name="theme-color" content="#0d1014"/>
 <style>
-  /* One type scale, ratio 1.25. One accent. No webfonts, so the page fetches
-     nothing when it opens, which is the same claim the tool itself makes. */
-  :root {
-    --bg: #fbfaf7;
-    --panel: #ffffff;
-    --ink: #1a1a18;
-    --dim: #5c5b55;
-    --rule: #e2ded4;
-    --accent: #9a5b00;
-    --pass-bg: #eaf6ec; --pass-ink: #116329;
-    --fail-bg: #fdecec; --fail-ink: #8a1f1f;
-    --fs-meta: 0.8rem;
-    --fs-body: 1rem;
-    --fs-head: 1.25rem;
-    --fs-title: 1.5625rem;
-    --fs-hero: 1.953rem;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg:#16171a; --panel:#1d1f23; --ink:#eceae4; --dim:#a3a199; --rule:#2e3138; --accent:#e0a458; --pass-bg:#12291a; --pass-ink:#7fd39b; --fail-bg:#2b1717; --fail-ink:#f0908c; }
-  }
-  * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; }
-  body {
-    margin: 0; background: var(--bg); color: var(--ink);
-    font-family: ui-serif, Georgia, "Times New Roman", serif;
-    font-size: var(--fs-body); line-height: 1.65;
-  }
-  code, pre, .mono { font-family: ui-monospace, "SF Mono", Consolas, "Liberation Mono", monospace; }
-  .wrap { max-width: 46rem; margin: 0 auto; padding: 4rem 1.25rem 5rem; }
-  header { border-bottom: 1px solid var(--rule); padding-bottom: 1.75rem; margin-bottom: 2.5rem; }
-  h1 { font-size: var(--fs-hero); line-height: 1.2; margin: 0 0 .5rem; letter-spacing: -0.01em; }
-  h2 { font-size: var(--fs-title); line-height: 1.25; margin: 3rem 0 .75rem; }
-  h3 { font-size: var(--fs-head); margin: 2rem 0 .5rem; }
-  .lede { font-size: var(--fs-head); color: var(--dim); margin: 0; }
-  .meta { font-size: var(--fs-meta); color: var(--dim); }
-  a { color: var(--accent); text-underline-offset: 2px; }
-  a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  pre {
-    background: var(--panel); border: 1px solid var(--rule); border-radius: 6px;
-    padding: .9rem 1rem; overflow-x: auto; font-size: var(--fs-meta); line-height: 1.6;
-    overflow-wrap: anywhere;
-  }
-  .cta { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1.75rem 0 0; }
-  .btn {
-    display: inline-block; padding: .55rem 1rem; border-radius: 6px;
-    border: 1px solid var(--rule); background: var(--panel); color: var(--ink);
-    text-decoration: none; font-size: var(--fs-meta);
-  }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  @media (prefers-color-scheme: dark) { .btn.primary { color: #16171a; } }
-  .rows { border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; margin: 1.25rem 0; }
-  .row { display: flex; gap: .75rem; align-items: baseline; padding: .7rem 1rem; border-top: 1px solid var(--rule); font-size: var(--fs-meta); flex-wrap: wrap; }
-  .row:first-child { border-top: 0; }
-  .tag { font-size: var(--fs-meta); padding: .1rem .5rem; border-radius: 999px; white-space: nowrap; }
-  .tag.pass { background: var(--pass-bg); color: var(--pass-ink); }
-  .tag.fail { background: var(--fail-bg); color: var(--fail-ink); }
-  ul { padding-left: 1.15rem; }
-  li { margin: .4rem 0; }
-  footer { margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid var(--rule); font-size: var(--fs-meta); color: var(--dim); }
-  /* attribution-kit v1 — the maker's mark inherits color; the pin takes the site's amber */
-  .aj-attribution { margin: 0; font: inherit; line-height: 1.5; color: inherit; }
-  .aj-attribution__mark { display: inline-block; width: 20px; height: 20px; vertical-align: -0.3em; margin-right: 0.45em; }
-  .aj-attribution__mark--full { width: 48px; height: 48px; vertical-align: middle; }
-  .aj-attribution a { color: inherit; text-decoration: underline; text-underline-offset: 0.15em; }
-  .aj-attribution a:hover { text-decoration-thickness: 2px; }
-  .aj-attribution a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
-  .aj-attribution__sep { margin: 0 0.35em; }
-  .aj-attribution { --aj-attribution-signal: var(--accent); }
-  @media print { .cta, footer { display: none } body { background: #fff } }
+/* =====================================================================
+   orphanage — product surface, dusk lighting.
+   Derived from ~/.claude/harness-dist/substrate/substrate.css §12:
+   elevation ladder, 10px structure radius, one easing curve, two
+   durations, an ambient wash tinted by the signal hue, all motion off
+   under prefers-reduced-motion.
+   Zero JavaScript, zero network requests — the same claim the reports this
+   tool generates make, and all this page's own CSP permits.
+   ===================================================================== */
+
+:root {
+  color-scheme: dark;
+
+  --sub-0: oklch(0.147 0.013 252);
+  --sub-1: oklch(0.187 0.013 252);
+  --sub-2: oklch(0.227 0.013 252);
+  --sub-3: oklch(0.267 0.012 252);
+  --edge-lo: oklch(0.305 0.012 252);
+  --edge-hi: oklch(0.425 0.012 252);
+
+  --ink:   oklch(0.96 0.004 252);
+  --ink-2: oklch(0.80 0.008 252);
+  --ink-3: oklch(0.665 0.010 252);
+
+  --signal:      oklch(0.79 0.145 68);
+  --signal-deep: oklch(0.62 0.135 62);
+
+  --ok:   oklch(0.78 0.16 152);
+  --fail: oklch(0.72 0.19 27);
+  --info: oklch(0.78 0.13 232);
+
+  --elev-1: 0 1px 2px -1px oklch(0.08 0.03 262 / 0.45),
+            0 4px 12px -4px oklch(0.08 0.03 262 / 0.40);
+  --elev-2: 0 2px 4px -2px oklch(0.08 0.03 262 / 0.50),
+            0 12px 32px -8px oklch(0.08 0.03 262 / 0.50);
+  --elev-3: 0 4px 8px -4px oklch(0.08 0.03 262 / 0.55),
+            0 28px 64px -12px oklch(0.08 0.03 262 / 0.62);
+  --edge-top: inset 0 1px 0 var(--edge-hi);
+
+  --r: 10px;
+  --rc: 8px;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --fast: 140ms;
+  --slow: 420ms;
+
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Code", Consolas, "Liberation Mono", monospace;
+
+  --shell: 1180px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--sub-0); color: var(--ink);
+  font: 400 clamp(0.95rem, 0.92rem + 0.13vw, 1.0625rem)/1.6 var(--sans);
+  -webkit-font-smoothing: antialiased; overflow-x: hidden;
+}
+code, pre, .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+a { color: inherit; }
+:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--sub-0), 0 0 0 4px var(--signal); border-radius: var(--rc); }
+::selection { background: var(--signal-deep); color: oklch(0.14 0.01 252); }
+
+.shell { width: 100%; max-width: var(--shell); margin-inline: auto; padding-inline: clamp(1.25rem, 1rem + 1.4vw, 2.5rem); }
+
+/* ---------------------------------------------------------- top bar --- */
+.topbar { position: sticky; top: 0; z-index: 40; background: color-mix(in oklab, var(--sub-0) 88%, transparent); border-bottom: 1px solid var(--edge-lo); }
+.topbar-in { display: flex; align-items: center; gap: 1rem; min-height: 60px; }
+.wordmark { display: inline-flex; align-items: center; gap: 0.6rem; min-height: 40px; padding-right: 0.35rem; border-radius: var(--rc); font: 600 1.0625rem/1 var(--sans); letter-spacing: -0.02em; text-decoration: none; }
+.wordmark svg { display: block; }
+.chip { font: 500 0.6875rem/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; padding: 0.4rem 0.55rem; border-radius: 999px; color: var(--ink-3); background: var(--sub-2); box-shadow: var(--edge-top); }
+.topnav { margin-left: auto; display: flex; align-items: center; gap: 0.25rem; }
+.topnav a { display: inline-flex; align-items: center; min-height: 36px; padding: 0 0.7rem; border-radius: var(--rc); text-decoration: none; color: var(--ink-2); font: 500 0.875rem/1 var(--sans); transition: color var(--fast) var(--ease), background-color var(--fast) var(--ease); }
+.topnav a:hover { color: var(--ink); background: var(--sub-2); }
+@media (max-width: 640px) { .chip { display: none; } .topnav a { padding: 0 0.5rem; font-size: 0.8125rem; } .topbar-in { gap: 0.5rem; } }
+
+/* ------------------------------------------------------------- hero --- */
+.hero { position: relative; isolation: isolate; overflow: hidden; padding-block: clamp(3rem, 2rem + 4.5vw, 5.5rem) clamp(2.5rem, 2rem + 3vw, 4rem); }
+.hero::before {
+  content: ""; position: absolute; z-index: -1; inset: -30% -20% auto -20%; height: 150%; pointer-events: none;
+  background:
+    radial-gradient(50% 44% at 12% 2%, oklch(0.86 0.19 68 / 0.15), transparent 68%),
+    radial-gradient(46% 44% at 86% 6%, oklch(0.78 0.13 232 / 0.12), transparent 70%);
+}
+.hero-grid { display: grid; gap: clamp(2rem, 1rem + 3vw, 3.25rem); align-items: start; }
+@media (min-width: 1000px) { .hero-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.04fr); gap: 3.5rem; } }
+
+.eyebrow { display: inline-flex; align-items: center; gap: 0.5rem; font: 500 0.75rem/1 var(--mono); letter-spacing: 0.11em; text-transform: uppercase; color: var(--signal); padding: 0.5rem 0.75rem 0.5rem 0.6rem; border-radius: 999px; background: color-mix(in oklab, var(--signal) 12%, var(--sub-1)); box-shadow: var(--edge-top); }
+.dot { width: 7px; height: 7px; border-radius: 999px; background: var(--signal); box-shadow: 0 0 0 3px color-mix(in oklab, var(--signal) 22%, transparent); }
+
+h1.display { margin: 1.25rem 0 0; font: 600 clamp(2.55rem, 1.5rem + 4.4vw, 4.2rem)/0.98 var(--sans); letter-spacing: -0.035em; text-wrap: balance; }
+h1.display em { font-style: normal; color: var(--signal); }
+.hero-sub { margin: 1.15rem 0 0; max-width: 34rem; color: var(--ink-2); font-size: clamp(1.02rem, 0.98rem + 0.3vw, 1.19rem); line-height: 1.55; }
+
+.cta { display: flex; flex-wrap: wrap; gap: 0.65rem; margin-top: 1.75rem; }
+.btn { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 46px; padding: 0 1.15rem; border-radius: var(--rc); text-decoration: none; font: 600 0.9375rem/1 var(--sans); transition: transform var(--fast) var(--ease), box-shadow var(--fast) var(--ease), background-color var(--fast) var(--ease); }
+.btn-primary { background: var(--signal); color: oklch(0.16 0.02 68); box-shadow: var(--elev-1); }
+.btn-primary:hover { transform: translateY(-2px); box-shadow: var(--elev-2); background: oklch(0.84 0.15 68); }
+.btn-ghost { background: var(--sub-2); color: var(--ink); box-shadow: var(--edge-top), var(--elev-1); }
+.btn-ghost:hover { transform: translateY(-2px); background: var(--sub-3); box-shadow: var(--edge-top), var(--elev-2); }
+.btn svg { display: block; }
+.hero-foot { margin-top: 1.5rem; display: flex; flex-wrap: wrap; gap: 0.4rem 1.25rem; font: 400 0.8125rem/1.4 var(--mono); color: var(--ink-3); }
+.hero-foot span { display: inline-flex; align-items: center; gap: 0.4rem; }
+.tick { color: var(--ok); }
+
+/* -------------------------------------------- the hero instrument ----- */
+.instrument { border-radius: var(--r); background: var(--sub-1); box-shadow: var(--edge-top), var(--elev-3); overflow: hidden; }
+.inst-bar { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; padding: 0.75rem 1rem; background: var(--sub-2); border-bottom: 1px solid var(--edge-lo); font: 500 0.75rem/1 var(--mono); letter-spacing: 0.05em; color: var(--ink-3); }
+.inst-bar .lights { display: inline-flex; gap: 5px; }
+.inst-bar .lights i { width: 9px; height: 9px; border-radius: 999px; background: var(--sub-3); box-shadow: inset 0 1px 0 var(--edge-hi); }
+.inst-bar .lights i:first-child { background: color-mix(in oklab, var(--fail) 55%, var(--sub-3)); }
+.inst-bar .live { margin-left: auto; display: inline-flex; align-items: center; gap: 0.4rem; color: var(--ok); text-transform: uppercase; }
+.pulse { width: 7px; height: 7px; border-radius: 999px; background: var(--ok); animation: pulse 2.6s var(--ease) infinite; }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--ok) 55%, transparent); } 50% { box-shadow: 0 0 0 5px color-mix(in oklab, var(--ok) 0%, transparent); } }
+
+/* the set-difference bar: crawl vs sitemap, the whole product in one row */
+.setbar { padding: 1.15rem 1.15rem 0.35rem; }
+.setbar-legend { display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem; font: 500 0.7rem/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 0.7rem; }
+.setbar-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 0.4rem; vertical-align: -1px; }
+.bar { display: grid; grid-template-columns: 2fr 9fr 1fr; gap: 3px; height: 46px; border-radius: 7px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--edge-lo); }
+.bar > span { display: flex; align-items: center; justify-content: center; font: 700 0.9rem/1 var(--mono); color: oklch(0.15 0.02 252); }
+.seg-orphan { background: color-mix(in oklab, var(--fail) 88%, var(--sub-2)); }
+.seg-both { background: color-mix(in oklab, var(--ok) 30%, var(--sub-2)); color: var(--ok) !important; }
+.seg-unlisted { background: color-mix(in oklab, var(--info) 82%, var(--sub-2)); }
+.bar-axis { display: flex; justify-content: space-between; margin-top: 0.5rem; font: 400 0.7rem/1.4 var(--mono); color: var(--ink-3); }
+
+.findings { padding: 0.9rem 0.75rem 0.75rem; display: grid; gap: 0.4rem; }
+.finding { display: grid; grid-template-columns: 66px minmax(0,1fr); gap: 0.8rem; align-items: center; padding: 0.65rem 0.85rem; border-radius: var(--rc); background: var(--sub-2); box-shadow: var(--edge-top); transition: transform var(--fast) var(--ease), box-shadow var(--fast) var(--ease); }
+.finding:hover { transform: translateX(2px); box-shadow: var(--edge-top), var(--elev-1); }
+.finding[data-clean="1"] { background: transparent; box-shadow: inset 0 0 0 1px var(--edge-lo); }
+.count { display: inline-flex; align-items: center; justify-content: center; min-height: 26px; border-radius: 999px; font: 700 0.6875rem/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; }
+.c-bad { background: color-mix(in oklab, var(--fail) 22%, var(--sub-2)); color: var(--fail); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--fail) 36%, transparent); }
+.c-warn { background: color-mix(in oklab, var(--signal) 20%, var(--sub-2)); color: var(--signal); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--signal) 34%, transparent); }
+.c-ok { background: var(--sub-3); color: var(--ink-3); box-shadow: inset 0 0 0 1px var(--edge-lo); }
+.f-name { font: 600 0.875rem/1.3 var(--sans); }
+.f-note { font: 400 0.78rem/1.4 var(--mono); color: var(--ink-3); margin-top: 0.2rem; overflow-wrap: anywhere; }
+.f-note b { color: var(--ink-2); font-weight: 600; }
+.inst-foot { padding: 0.8rem 1.15rem 1.05rem; border-top: 1px solid var(--edge-lo); font: 400 0.75rem/1.5 var(--mono); color: var(--ink-3); }
+
+/* --------------------------------------------------------- readouts --- */
+.readouts { border-top: 1px solid var(--edge-lo); background: var(--sub-1); }
+.readout-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); }
+@media (min-width: 760px) { .readout-grid { grid-template-columns: repeat(4, minmax(0,1fr)); } }
+.readout { padding: clamp(1.5rem, 1rem + 1.6vw, 2.25rem) clamp(1.25rem, 1rem + 1.4vw, 2rem); }
+.readout + .readout { box-shadow: inset 1px 0 0 var(--edge-lo); }
+@media (max-width: 759px) { .readout:nth-child(n+3) { box-shadow: inset 0 1px 0 var(--edge-lo); } .readout:nth-child(4) { box-shadow: inset 1px 0 0 var(--edge-lo), inset 0 1px 0 var(--edge-lo); } }
+.readout .n { display: block; font: 500 clamp(2.4rem, 1.6rem + 3vw, 3.6rem)/0.9 var(--mono); letter-spacing: -0.035em; }
+.readout .n.sig { color: var(--signal); } .readout .n.bad { color: var(--fail); } .readout .n.ok { color: var(--ok); }
+.readout .k { display: block; margin-top: 0.6rem; font: 500 0.7rem/1.3 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+.readout .s { display: block; margin-top: 0.35rem; font-size: 0.8125rem; line-height: 1.4; color: var(--ink-3); }
+
+/* ------------------------------------------------------------ bands --- */
+.band { padding-block: clamp(3.25rem, 2.25rem + 4vw, 6rem); border-top: 1px solid var(--edge-lo); }
+.band[data-tone="1"] { background: var(--sub-1); }
+.band-head { max-width: 46rem; }
+.kicker { font: 500 0.72rem/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--signal); }
+h2 { margin: 0.9rem 0 0; font: 600 clamp(1.75rem, 1.2rem + 2.1vw, 2.6rem)/1.06 var(--sans); letter-spacing: -0.028em; text-wrap: balance; }
+.band-head p { margin: 0.85rem 0 0; color: var(--ink-2); max-width: 40rem; }
+
+/* --------------------------------------------------- the crawl graph -- */
+.graphwrap { margin-top: 2.25rem; border-radius: var(--r); background: var(--sub-1); box-shadow: var(--edge-top), var(--elev-2); overflow: hidden; }
+.band[data-tone="1"] .graphwrap { background: var(--sub-2); }
+.graph-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 1.15rem; padding: 0.75rem 1.1rem; border-bottom: 1px solid var(--edge-lo); font: 500 0.7rem/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.graph-bar b { color: var(--ink-2); font-weight: 600; }
+.graph-scroll { overflow-x: auto; padding: 1.15rem 1.1rem 1.35rem; }
+.graph-scroll svg { display: block; width: 100%; min-width: 620px; height: auto; }
+.gnode-label { font: 500 12px var(--mono); fill: oklch(0.80 0.008 252); }
+.gnode-label.hi { fill: oklch(0.96 0.004 252); }
+.gcap { font: 500 11px var(--mono); letter-spacing: 0.1em; }
+
+/* ------------------------------------------------------------- rules -- */
+.laws { display: grid; gap: 0.75rem; margin-top: 2.25rem; }
+@media (min-width: 900px) { .laws { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+.law { border-radius: var(--r); background: var(--sub-2); box-shadow: var(--edge-top), var(--elev-1); overflow: hidden; transition: box-shadow var(--slow) var(--ease); }
+.band[data-tone="1"] .law { background: var(--sub-2); }
+.law:hover { box-shadow: var(--edge-top), var(--elev-2); }
+.law > summary { list-style: none; cursor: pointer; padding: 1.05rem 1.15rem; display: grid; grid-template-columns: 2.1rem minmax(0,1fr) 1.5rem; gap: 0.85rem; align-items: start; min-height: 48px; }
+.law > summary::-webkit-details-marker { display: none; }
+.law .idx { font: 500 0.75rem/1.6 var(--mono); color: var(--signal); letter-spacing: 0.06em; }
+.law .title { font: 600 1rem/1.4 var(--sans); letter-spacing: -0.012em; }
+.law .caret { justify-self: end; color: var(--ink-3); transition: transform var(--fast) var(--ease); }
+.law[open] .caret { transform: rotate(90deg); }
+.law .body { padding: 0 1.15rem 1.2rem 4.05rem; color: var(--ink-2); font-size: 0.9rem; line-height: 1.62; }
+.law .body code { color: var(--ink); background: var(--sub-3); padding: 0.1em 0.35em; border-radius: 4px; font-size: 0.86em; }
+
+/* ------------------------------------------------- noise case-study --- */
+.noise { display: grid; gap: 1rem; margin-top: 2.25rem; align-items: stretch; }
+@media (min-width: 880px) { .noise { grid-template-columns: repeat(3, minmax(0,1fr)); } }
+.ncard { border-radius: var(--r); background: var(--sub-2); box-shadow: var(--edge-top), var(--elev-1); padding: 1.35rem; display: flex; flex-direction: column; gap: 0.8rem; transition: transform var(--slow) var(--ease), box-shadow var(--slow) var(--ease); }
+.ncard:hover { transform: translateY(-3px); box-shadow: var(--edge-top), var(--elev-2); }
+.ncard[data-kind="good"] { background: var(--sub-3); }
+.nlabel { font: 500 0.7rem/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+.ncard[data-kind="good"] .nlabel { color: var(--signal); }
+.nbig { font: 500 clamp(2.6rem, 2rem + 2vw, 3.4rem)/0.9 var(--mono); letter-spacing: -0.035em; }
+.nbig.bad { color: var(--fail); } .nbig.good { color: var(--ok); }
+.ncap { font-size: 0.88rem; line-height: 1.55; color: var(--ink-2); margin: 0; }
+.ncap b { color: var(--ink); font-weight: 600; }
+
+/* --------------------------------------------------------- terminal --- */
+.install-grid { display: grid; gap: 1.25rem; margin-top: 2.25rem; align-items: start; }
+@media (min-width: 940px) { .install-grid { grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 2.5rem; } }
+.term { border-radius: var(--r); overflow: hidden; background: var(--sub-0); box-shadow: var(--edge-top), var(--elev-2); }
+.band[data-tone="1"] .term { background: var(--sub-0); }
+.term-bar { display: flex; align-items: center; gap: 0.55rem; padding: 0.7rem 0.95rem; background: var(--sub-2); border-bottom: 1px solid var(--edge-lo); font: 500 0.72rem/1 var(--mono); letter-spacing: 0.06em; color: var(--ink-3); }
+.term-bar i { width: 9px; height: 9px; border-radius: 999px; background: var(--sub-3); }
+.term pre { margin: 0; padding: 1.15rem; overflow-x: auto; font: 400 0.86rem/1.85 var(--mono); }
+.term .p { color: var(--signal); user-select: none; }
+.term .c { color: var(--ink); }
+.term .o { color: var(--ink-3); }
+.term .bad { color: var(--fail); }
+.exits { display: grid; gap: 0.5rem; }
+.exits h3 { margin: 0 0 0.25rem; font: 500 0.72rem/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); }
+.exit { display: grid; grid-template-columns: 2.4rem minmax(0,1fr); gap: 0.75rem; align-items: center; min-height: 44px; padding: 0.55rem 0.8rem; border-radius: var(--rc); background: var(--sub-2); box-shadow: var(--edge-top); font: 400 0.86rem/1.35 var(--sans); color: var(--ink-2); }
+.exit b { display: inline-flex; align-items: center; justify-content: center; width: 2.4rem; height: 1.9rem; border-radius: 6px; background: var(--sub-3); font: 700 0.86rem/1 var(--mono); color: var(--signal); }
+
+/* ------------------------------------------------------------ limits -- */
+.limits { margin-top: 2rem; border-top: 1px solid var(--edge-lo); }
+.limit { display: grid; gap: 0.35rem 1.75rem; padding: 1.4rem 0.25rem; border-bottom: 1px solid var(--edge-lo); transition: background-color var(--fast) var(--ease); }
+@media (min-width: 820px) { .limit { grid-template-columns: 3rem minmax(0, 22rem) minmax(0, 1fr); align-items: baseline; padding-inline: 0.75rem; } }
+.limit:hover { background: color-mix(in oklab, var(--ink) 3%, transparent); }
+.limit .no { font: 500 0.75rem/1.6 var(--mono); letter-spacing: 0.08em; color: var(--fail); }
+.limit h3 { margin: 0; font: 600 clamp(1rem, 0.95rem + 0.3vw, 1.2rem)/1.3 var(--sans); letter-spacing: -0.015em; }
+.limit p { margin: 0; font-size: 0.9rem; line-height: 1.6; color: var(--ink-3); }
+
+/* ------------------------------------------------------------ footer -- */
+footer.site { border-top: 1px solid var(--edge-lo); padding-block: 2.5rem 3rem; background: var(--sub-1); }
+.foot-in { display: flex; flex-wrap: wrap; gap: 1.25rem 2rem; align-items: center; justify-content: space-between; font-size: 0.86rem; color: var(--ink-3); }
+.aj-attribution { margin: 0; font: inherit; line-height: 1.5; color: var(--ink-2); --aj-attribution-signal: var(--signal); }
+.aj-attribution__mark { display: inline-block; width: 20px; height: 20px; vertical-align: -0.3em; margin-right: 0.45em; }
+.aj-attribution a { color: inherit; text-decoration: underline; text-underline-offset: 0.15em; }
+.aj-attribution a:hover { color: var(--ink); text-decoration-thickness: 2px; }
+.aj-attribution__sep { margin: 0 0.35em; }
+.foot-in a { color: var(--ink-2); }
+.foot-in a:hover { color: var(--ink); }
+
+/* ------------------------------------------------------------ motion -- */
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.rise { animation: rise var(--slow) var(--ease) both; }
+.d1 { animation-delay: 70ms; } .d2 { animation-delay: 140ms; } .d3 { animation-delay: 210ms; } .d4 { animation-delay: 300ms; }
+@keyframes dash { to { stroke-dashoffset: -22; } }
+.gflow { stroke-dasharray: 4 7; animation: dash 1.6s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  .rise, .gflow, .pulse { animation: none; }
+  .btn:hover, .ncard:hover, .finding:hover { transform: none; }
+}
+@media print { body { background: #fff; color: #000; } .topbar, .cta, .hero::before, footer.site { display: none; } }
 </style>
 </head>
 <body>
-<main class="wrap">
 
-<header>
-  <h1>orphanage</h1>
-  <p class="lede">Crawls a site the way a crawler does &mdash; following links from the root &mdash; reads the sitemap separately, and reports where the two disagree: orphans, unlisted pages, broken internal links, redirect chains, deep pages, dead sitemap entries.</p>
-  <div class="cta">
-    <a class="btn primary" href="./report.html">See a sample report</a>
-    <a class="btn" href="https://github.com/jamessuuu/orphanage">Source</a>
+<header class="topbar">
+  <div class="shell topbar-in">
+    <a class="wordmark" href="/">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect x="1.5" y="1.5" width="21" height="21" rx="5" fill="var(--sub-2)" stroke="var(--edge-hi)"/>
+        <circle cx="8" cy="8" r="2.1" fill="var(--ink-2)"/><circle cx="16" cy="9.5" r="2.1" fill="var(--ink-2)"/>
+        <path d="M9.6 8.6l4.8 0.7" stroke="var(--edge-hi)" stroke-width="1.4"/>
+        <circle cx="12" cy="17" r="2.4" fill="none" stroke="var(--signal)" stroke-width="1.7" stroke-dasharray="2.6 2.4"/>
+      </svg>
+      orphanage
+    </a>
+    <span class="chip">v0.1 · MIT</span>
+    <nav class="topnav">
+      <a href="./report">Sample report</a>
+      <a href="https://github.com/jamessuuu/orphanage">Source</a>
+    </nav>
   </div>
-  <p class="meta" style="margin-top:1rem">MIT. Zero runtime dependencies. Node 20+.</p>
 </header>
 
-<h2>Forty findings, and every one was noise</h2>
+<main>
 
-<p>Run against <code>agentjames.vercel.app</code> on 2026-09-05, orphanage crawled the site, read its sitemap, and reported 40 pages the crawl had reached that the sitemap never declared. Every one of those 40 turned out to be noise. Thirty-five were <code>/console?c=...</code> permalinks, each one declaring <code>rel=canonical</code> back to <code>/console</code> &mdash; the same page, forty different query strings. The other five were non-HTML endpoints a sitemap of pages was never going to list: things like <code>llms.txt</code>, <code>agent.json</code>, <code>resume.md</code>, and a CV PDF.</p>
+<!-- ══════════════════════════════════════════════════════ HERO ════════ -->
+<section class="hero">
+  <div class="shell hero-grid">
 
-<p>Splitting canonical-consolidated URLs and non-HTML resources into their own buckets took the unlisted count from 40 down to 0. With the noise gone, the one finding that actually mattered became visible: <code>/games</code> is declared in the sitemap and is not reachable by following any link from the homepage.</p>
+    <div>
+      <p class="eyebrow rise"><span class="dot"></span>crawl graph vs. sitemap</p>
+      <h1 class="display rise d1">Some of your pages are <em>declared but unreachable</em>.</h1>
+      <p class="hero-sub rise d2">
+        orphanage crawls from the root the way a crawler does, reads your sitemap
+        separately, and reports only where the two disagree. Six finding
+        categories, no dashboard, no account.
+      </p>
+      <div class="cta rise d3">
+        <a class="btn btn-primary" href="./report">
+          Open a real report
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/jamessuuu/orphanage">Read the source</a>
+      </div>
+      <p class="hero-foot rise d4">
+        <span><span class="tick">✓</span> zero runtime deps</span>
+        <span><span class="tick">✓</span> respects robots.txt</span>
+        <span><span class="tick">✓</span> Node 20+</span>
+      </p>
+    </div>
 
-<p><strong>A tool that buries one real finding under forty false ones is worse than no tool.</strong> That is not a caveat on this project. It is the reason the canonical and content-type buckets exist at all.</p>
+    <!-- The artifact, at size: the committed fixture run that exercises all
+         six finding categories at once (site/report.html, verbatim). -->
+    <div class="instrument rise d2">
+      <div class="inst-bar">
+        <span class="lights"><i></i><i></i><i></i></span>
+        report.html — 12 discovered · 11 fetched
+        <span class="live"><span class="pulse"></span>real run</span>
+      </div>
 
-<h2>What a report looks like</h2>
+      <div class="setbar">
+        <p class="setbar-legend">
+          <span><i style="background:var(--fail)"></i>sitemap only</span>
+          <span><i style="background:color-mix(in oklab, var(--ok) 60%, var(--sub-2))"></i>both agree</span>
+          <span><i style="background:var(--info)"></i>crawl only</span>
+        </p>
+        <div class="bar" role="img" aria-label="Set difference: 2 URLs in the sitemap only, 8 in both, 1 reached by the crawl only">
+          <span class="seg-orphan">2</span>
+          <span class="seg-both">8</span>
+          <span class="seg-unlisted">1</span>
+        </div>
+        <p class="bar-axis"><span>sitemap: 10 URLs</span><span>crawl: 9 pages</span></p>
+      </div>
 
-<p>Every finding category gets its own section, and an empty one says so in plain language instead of just staying quiet:</p>
+      <div class="findings">
+        <div class="finding">
+          <span class="count c-bad">2 found</span>
+          <div>
+            <div class="f-name">Orphans</div>
+            <p class="f-note"><b>/gone</b> · <b>/orphan</b> — declared, unreachable from the root</p>
+          </div>
+        </div>
+        <div class="finding">
+          <span class="count c-warn">1 found</span>
+          <div>
+            <div class="f-name">Unlisted</div>
+            <p class="f-note"><b>/secret</b> — live and linked, absent from the sitemap</p>
+          </div>
+        </div>
+        <div class="finding">
+          <span class="count c-bad">1 found</span>
+          <div>
+            <div class="f-name">Broken internal link</div>
+            <p class="f-note"><b>/missing</b> 404 — linked from /about</p>
+          </div>
+        </div>
+        <div class="finding">
+          <span class="count c-warn">3 found</span>
+          <div>
+            <div class="f-name">Redirect chain · deep page · dead sitemap entry</div>
+            <p class="f-note">/old-contact → /contact · /blog/post-4 at depth 4 · /gone returns 410</p>
+          </div>
+        </div>
+        <div class="finding" data-clean="1">
+          <span class="count c-ok">excluded</span>
+          <div>
+            <div class="f-name">1 page skipped by robots.txt</div>
+            <p class="f-note">/private/page — shown as excluded, never counted as broken</p>
+          </div>
+        </div>
+      </div>
 
-<div class="rows">
-  <div class="row"><span class="tag fail">1 found</span> <code class="mono">orphans</code> <span class="meta">in the sitemap, unreachable by following links from the root &mdash; <code>/games</code></span></div>
-  <div class="row"><span class="tag pass">0 found</span> <code class="mono">unlisted</code> <span class="meta">every page the crawl reached is declared in the sitemap</span></div>
-  <div class="row"><span class="tag pass">0 found</span> <code class="mono">broken internal links, redirect chains, deep pages, dead sitemap entries</code> <span class="meta">clean</span></div>
-</div>
+      <p class="inst-foot">A committed fixture site, built to populate all six categories at once — so you can see every section without trusting a screenshot.</p>
+    </div>
 
-<p>The sample linked above is not that run &mdash; it is a small, committed fixture site built to exercise all six finding categories at once, so you can see every section populated without trusting a screenshot.</p>
+  </div>
+</section>
 
-<h2>The honesty rules</h2>
+<!-- ══════════════════════════════════════════════════ READOUTS ════════ -->
+<section class="readouts">
+  <div class="shell readout-grid" style="padding-inline:0">
+    <div class="readout"><span class="n bad">6</span><span class="k">finding kinds</span><span class="s">each with its own section</span></div>
+    <div class="readout"><span class="n sig">40 → 0</span><span class="k">false positives cut</span><span class="s">on the real run below</span></div>
+    <div class="readout"><span class="n ok">1</span><span class="k">real finding surfaced</span><span class="s">once the noise was gone</span></div>
+    <div class="readout"><span class="n">0</span><span class="k">JS in the report</span><span class="s">prints to PDF intact</span></div>
+  </div>
+</section>
 
-<ul>
-  <li>If the crawl hits its page cap, the report says so, explicitly, next to the orphan and unlisted findings, because a truncated crawl cannot tell a genuine orphan apart from a page it simply had not reached yet.</li>
-  <li>A page excluded by this tool's own robots.txt compliance is shown as excluded, not counted as broken or orphaned. The tool found a link to it; it chose not to follow it.</li>
-  <li>A dead sitemap entry is only reported for a URL whose live status was actually observed. A sitemap URL that was neither crawled nor separately checked is reported as unknown status, never guessed at.</li>
-</ul>
+<!-- ══════════════════════════════════════════ THE CRAWL GRAPH ════════ -->
+<section class="band">
+  <div class="shell">
+    <div class="band-head">
+      <p class="kicker">what an orphan actually is</p>
+      <h2>A page can be in the sitemap and still have no way in.</h2>
+      <p>The graph is the crawl. Solid edges are links that were actually followed from the root. The two dashed nodes are declared in <code>sitemap.xml</code> and have no inbound edge at all.</p>
+    </div>
 
-<h2>The report fetches nothing</h2>
+    <div class="graphwrap">
+      <div class="graph-bar">
+        <span><b>fixture site</b> · 12 URLs discovered</span>
+        <span style="color:var(--ink-2)">solid = link followed</span>
+        <span style="color:var(--fail)">red = broken or orphaned</span>
+        <span style="color:var(--info)">blue = live, not in sitemap</span>
+        <span style="color:var(--signal)">amber = redirected</span>
+      </div>
+      <div class="graph-scroll">
+        <svg viewBox="0 0 760 300" role="img" aria-labelledby="g-t g-d">
+          <title id="g-t">Crawl graph of the fixture site</title>
+          <desc id="g-d">Nine pages reachable by following links from the root. Two pages, /orphan and /gone, are declared in the sitemap but have no inbound link, so they float unconnected. One page, /secret, is reachable but missing from the sitemap. One link points at /missing, which returns 404.</desc>
 
-<p>Zero JavaScript, zero network requests, a mobile viewport tag, a print stylesheet, and every collapsible section open by default, because a collapsed <code>&lt;details&gt;</code> disappears entirely from a printed PDF. <code>overflow-wrap: anywhere</code> is set on every URL cell so a long one cannot push the layout wider than a phone screen.</p>
+          <!-- reachable edges -->
+          <g stroke="oklch(0.425 0.012 252)" stroke-width="1.6" fill="none">
+            <path d="M104 150 L214 88"/>
+            <path d="M104 150 L214 150"/>
+            <path d="M104 150 L214 212"/>
+            <path d="M262 88 L372 62"/>
+            <path d="M262 150 L372 150"/>
+            <path d="M262 212 L372 212"/>
+            <path d="M420 150 L520 150"/>
+          </g>
+          <!-- broken link edge -->
+          <path d="M262 88 L372 118" stroke="oklch(0.72 0.19 27)" stroke-width="1.6" fill="none" class="gflow"/>
+          <!-- redirect edge -->
+          <path d="M420 212 L520 240" stroke="oklch(0.79 0.145 68)" stroke-width="1.6" fill="none" stroke-dasharray="5 4"/>
 
-<p><code>orphanage --check &lt;report.html&gt;</code> enforces all of that mechanically, on any report, including one you did not generate.</p>
+          <!-- root -->
+          <circle cx="80" cy="150" r="24" fill="oklch(0.267 0.012 252)" stroke="oklch(0.79 0.145 68)" stroke-width="2"/>
+          <text x="80" y="155" text-anchor="middle" class="gnode-label hi">/</text>
+          <text x="80" y="196" text-anchor="middle" class="gcap" fill="oklch(0.79 0.145 68)">ROOT</text>
 
-<h2>Use it</h2>
+          <!-- depth 1 -->
+          <g>
+            <rect x="214" y="70" width="48" height="34" rx="7" fill="oklch(0.227 0.013 252)" stroke="oklch(0.305 0.012 252)"/>
+            <text x="238" y="92" text-anchor="middle" class="gnode-label">about</text>
+            <rect x="214" y="132" width="48" height="34" rx="7" fill="oklch(0.227 0.013 252)" stroke="oklch(0.305 0.012 252)"/>
+            <text x="238" y="154" text-anchor="middle" class="gnode-label">blog</text>
+            <rect x="214" y="194" width="48" height="34" rx="7" fill="oklch(0.227 0.013 252)" stroke="oklch(0.305 0.012 252)"/>
+            <text x="238" y="216" text-anchor="middle" class="gnode-label">docs</text>
+          </g>
 
-<pre>node bin/orphanage.mjs https://example.com/
-node bin/orphanage.mjs --check report.html</pre>
+          <!-- depth 2 -->
+          <g>
+            <rect x="372" y="44" width="48" height="34" rx="7" fill="oklch(0.227 0.013 252)" stroke="oklch(0.305 0.012 252)"/>
+            <text x="396" y="66" text-anchor="middle" class="gnode-label">team</text>
+            <rect x="372" y="132" width="48" height="34" rx="7" fill="oklch(0.227 0.013 252)" stroke="oklch(0.305 0.012 252)"/>
+            <text x="396" y="154" text-anchor="middle" class="gnode-label">post-3</text>
+            <rect x="372" y="194" width="48" height="34" rx="7" fill="oklch(0.227 0.013 252)" stroke="oklch(0.305 0.012 252)"/>
+            <text x="396" y="216" text-anchor="middle" class="gnode-label">guide</text>
+            <!-- 404 -->
+            <rect x="372" y="102" width="56" height="30" rx="7" fill="none" stroke="oklch(0.72 0.19 27)" stroke-width="1.6"/>
+            <text x="400" y="122" text-anchor="middle" class="gnode-label" fill="oklch(0.72 0.19 27)">404</text>
+          </g>
 
-<p class="meta">Exit <code>0</code> nothing to report &middot; <code>1</code> a finding was produced, or the report failed its own <code>--check</code>, which is the CI signal &middot; <code>2</code> used wrongly, so nothing was measured.</p>
+          <!-- depth 3/4 -->
+          <g>
+            <rect x="520" y="132" width="66" height="34" rx="7" fill="oklch(0.227 0.013 252)" stroke="oklch(0.305 0.012 252)"/>
+            <text x="553" y="154" text-anchor="middle" class="gnode-label">post-4</text>
+            <text x="553" y="182" text-anchor="middle" class="gcap" fill="oklch(0.665 0.010 252)">DEPTH 4</text>
+            <rect x="520" y="224" width="76" height="32" rx="7" fill="oklch(0.227 0.013 252)" stroke="oklch(0.79 0.145 68)"/>
+            <text x="558" y="245" text-anchor="middle" class="gnode-label" fill="oklch(0.79 0.145 68)">contact</text>
+            <text x="558" y="272" text-anchor="middle" class="gcap" fill="oklch(0.79 0.145 68)">REDIRECTED</text>
+          </g>
 
-<h2>What it will not tell you</h2>
+          <!-- unlisted (reachable, not in sitemap) -->
+          <g>
+            <path d="M262 150 L372 262" stroke="oklch(0.78 0.13 232)" stroke-width="1.6" fill="none"/>
+            <rect x="330" y="252" width="62" height="32" rx="7" fill="oklch(0.227 0.013 252)" stroke="oklch(0.78 0.13 232)" stroke-width="1.6"/>
+            <text x="361" y="273" text-anchor="middle" class="gnode-label" fill="oklch(0.78 0.13 232)">secret</text>
+          </g>
 
-<ul>
-  <li>Whether GPTBot, ClaudeBot, or Googlebot specifically can reach a page. This tool crawls once, with one ordinary browser-style User-Agent. A sibling tool, built separately, handles per-crawler access.</li>
-  <li>Anything on a page whose navigation is injected by client-side JavaScript. It sees exactly what a crawler that does not execute JavaScript sees.</li>
-  <li>Whether a page deserves to be indexed. A correctly-orphaned thank-you page still shows up in the orphans list; deciding that is a judgment call for a person, not this tool.</li>
-</ul>
+          <!-- the orphans: no edges at all -->
+          <g>
+            <line x1="640" y1="24" x2="640" y2="276" stroke="oklch(0.305 0.012 252)" stroke-dasharray="3 5"/>
+            <text x="700" y="34" text-anchor="middle" class="gcap" fill="oklch(0.72 0.19 27)">NO INBOUND LINK</text>
+            <rect x="662" y="72" width="76" height="36" rx="9" fill="none" stroke="oklch(0.72 0.19 27)" stroke-width="1.8" stroke-dasharray="5 4"/>
+            <text x="700" y="95" text-anchor="middle" class="gnode-label" fill="oklch(0.72 0.19 27)">orphan</text>
+            <rect x="662" y="130" width="76" height="36" rx="9" fill="none" stroke="oklch(0.72 0.19 27)" stroke-width="1.8" stroke-dasharray="5 4"/>
+            <text x="700" y="153" text-anchor="middle" class="gnode-label" fill="oklch(0.72 0.19 27)">gone</text>
+            <text x="700" y="196" text-anchor="middle" class="gcap" fill="oklch(0.665 0.010 252)">IN SITEMAP.XML</text>
+            <text x="700" y="214" text-anchor="middle" class="gcap" fill="oklch(0.665 0.010 252)">UNREACHABLE</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+  </div>
+</section>
 
-<footer>
-  <!-- attribution-kit v1 -->
-  <p class="aj-attribution">
-    <svg class="aj-attribution__mark" viewBox="0 0 32 32" width="20" height="20" role="img" aria-label="Agent James"><path fill="currentColor" d="M1 10h3v4H1zM28 10h3v4h-3zM10 1h4v3h-4zM10 28h4v3h-4zM1 18h3v4H1zM28 18h3v4h-3zM18 1h4v3h-4zM18 28h4v3h-4z"/><path fill="currentColor" fill-rule="evenodd" d="M5 4h22a1 1 0 0 1 1 1v22a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM18.3 9h3.4v8a5.7 5.7 0 0 1-5.7 5.7H12v-3.4h4a2.3 2.3 0 0 0 2.3-2.3z"/><rect x="6.5" y="6.5" width="3.5" height="3.5" fill="var(--aj-attribution-signal, #B45309)"/></svg>Built by <a href="https://agentjames.vercel.app" rel="me noopener">James Lorenz Santos</a><span class="aj-attribution__sep" aria-hidden="true">&middot;</span><a href="https://www.linkedin.com/in/james-lorenz-santos-720776251/" rel="me noopener" target="_blank">LinkedIn</a>
-  </p>
-  <p>Source at <a href="https://github.com/jamessuuu/orphanage">github.com/jamessuuu/orphanage</a>. MIT.</p>
-</footer>
+<!-- ══════════════════════════════════════════════ THE NOISE STORY ════ -->
+<section class="band" data-tone="1">
+  <div class="shell">
+    <div class="band-head">
+      <p class="kicker">the run that nearly shipped</p>
+      <h2>Forty findings. Every single one was noise.</h2>
+      <p>Run against <code>agentjames.vercel.app</code> on 2026-09-05. A tool that buries one real finding under forty false ones is worse than no tool — which is why the canonical and content-type buckets exist at all.</p>
+    </div>
+
+    <div class="noise">
+      <article class="ncard">
+        <span class="nlabel">first run</span>
+        <span class="nbig bad">40</span>
+        <p class="ncap">"unlisted" pages reported. 35 were <code>/console?c=…</code> permalinks all declaring <code>rel=canonical</code> back to one page; 5 were non-HTML endpoints like <code>llms.txt</code> and a CV PDF.</p>
+      </article>
+      <article class="ncard">
+        <span class="nlabel">the fix</span>
+        <span class="nbig">2</span>
+        <p class="ncap">New buckets, not new thresholds: canonical-consolidated URLs and non-HTML resources are separated out and labelled rather than counted as findings.</p>
+      </article>
+      <article class="ncard" data-kind="good">
+        <span class="nlabel">after</span>
+        <span class="nbig good">1</span>
+        <p class="ncap"><b>Unlisted dropped to zero, and the finding that mattered became visible:</b> <code>/games</code> is in the sitemap and is not reachable by following any link from the homepage.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ THE RULES ══════ -->
+<section class="band">
+  <div class="shell">
+    <div class="band-head">
+      <p class="kicker">enforced mechanically</p>
+      <h2>Three rules that stop it from guessing.</h2>
+      <p><code>orphanage --check &lt;report.html&gt;</code> re-runs the structural rules against any report, including one you did not generate.</p>
+    </div>
+
+    <div class="laws">
+      <details class="law" open>
+        <summary>
+          <span class="idx">01</span>
+          <span class="title">A truncated crawl says so, next to the findings it invalidates</span>
+          <span class="caret" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </summary>
+        <div class="body">If the crawl hits its page cap, the report states it beside the orphan and unlisted sections — a truncated crawl cannot tell a genuine orphan from a page it simply had not reached yet.</div>
+      </details>
+
+      <details class="law">
+        <summary>
+          <span class="idx">02</span>
+          <span class="title">A robots-excluded page is shown as excluded, not broken</span>
+          <span class="caret" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </summary>
+        <div class="body">The tool found a link to it and chose not to follow it. That is a different fact from "this link is broken", and it gets a different row.</div>
+      </details>
+
+      <details class="law">
+        <summary>
+          <span class="idx">03</span>
+          <span class="title">A dead sitemap entry needs an observed status, not an assumed one</span>
+          <span class="caret" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </summary>
+        <div class="body">A sitemap URL that was neither crawled nor separately checked is reported as <code>unknown status</code>. It is never guessed at, and never counted as dead.</div>
+      </details>
+
+      <details class="law">
+        <summary>
+          <span class="idx">04</span>
+          <span class="title">The report ships open, with no JavaScript</span>
+          <span class="caret" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        </summary>
+        <div class="body">Every collapsible section is open by default, because a collapsed <code>&lt;details&gt;</code> disappears from a printed PDF. <code>overflow-wrap: anywhere</code> is set on every URL cell so one long URL cannot push the layout wider than a phone.</div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ INSTALL ════════ -->
+<section class="band" data-tone="1">
+  <div class="shell">
+    <div class="band-head">
+      <p class="kicker">two commands</p>
+      <h2>Crawl it, then let CI verify the report.</h2>
+    </div>
+
+    <div class="install-grid">
+      <div class="term">
+        <div class="term-bar"><i></i><i></i><i></i> bash</div>
+        <pre><code><span class="p">$</span> <span class="c">node bin/orphanage.mjs https://example.com/</span>
+<span class="o">  crawled 9 pages · sitemap declared 10 URLs
+  </span><span class="bad">orphans          2</span><span class="o">   /gone  /orphan
+  unlisted         1   /secret
+  broken links     1   /missing (404, from /about)
+  wrote report.html — exit 1</span>
+
+<span class="p">$</span> <span class="c">node bin/orphanage.mjs --check report.html</span>
+<span class="o">  ✓ structural rules hold</span></code></pre>
+      </div>
+
+      <div class="exits">
+        <h3>exit codes</h3>
+        <span class="exit"><b>0</b> <span>nothing to report</span></span>
+        <span class="exit"><b>1</b> <span>a finding was produced, or the report failed its own <code>--check</code></span></span>
+        <span class="exit"><b>2</b> <span>used wrongly, so nothing was measured</span></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════ LIMITS ═════════ -->
+<section class="band">
+  <div class="shell">
+    <div class="band-head">
+      <p class="kicker">stated up front</p>
+      <h2>What it will not tell you.</h2>
+    </div>
+    <div class="limits">
+      <article class="limit">
+        <span class="no">N01</span>
+        <h3>Whether GPTBot or Googlebot can reach a page</h3>
+        <p>This tool crawls once, with one ordinary browser-style User-Agent. Per-crawler access is a separate method, handled by a sibling tool built for exactly that.</p>
+      </article>
+      <article class="limit">
+        <span class="no">N02</span>
+        <h3>Anything behind client-side navigation</h3>
+        <p>It sees exactly what a crawler that does not execute JavaScript sees. Links injected at runtime are invisible to it, and it does not pretend otherwise.</p>
+      </article>
+      <article class="limit">
+        <span class="no">N03</span>
+        <h3>Whether a page deserves to be indexed</h3>
+        <p>A correctly-orphaned thank-you page still appears in the orphans list. Deciding that is a judgment call for a person, not for this tool.</p>
+      </article>
+    </div>
+  </div>
+</section>
 
 </main>
+
+<footer class="site">
+  <div class="shell foot-in">
+    <!-- attribution-kit v1 -->
+    <p class="aj-attribution">
+      <svg class="aj-attribution__mark" viewBox="0 0 32 32" width="20" height="20" role="img" aria-label="Agent James"><path fill="currentColor" d="M1 10h3v4H1zM28 10h3v4h-3zM10 1h4v3h-4zM10 28h4v3h-4zM1 18h3v4H1zM28 18h3v4h-3zM18 1h4v3h-4zM18 28h4v3h-4z"/><path fill="currentColor" fill-rule="evenodd" d="M5 4h22a1 1 0 0 1 1 1v22a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM18.3 9h3.4v8a5.7 5.7 0 0 1-5.7 5.7H12v-3.4h4a2.3 2.3 0 0 0 2.3-2.3z"/><rect x="6.5" y="6.5" width="3.5" height="3.5" fill="var(--aj-attribution-signal, #B45309)"/></svg>Built by <a href="https://agentjames.vercel.app" rel="me noopener">James Lorenz Santos</a><span class="aj-attribution__sep" aria-hidden="true">·</span><a href="https://www.linkedin.com/in/james-lorenz-santos-720776251/" rel="me noopener" target="_blank">LinkedIn</a>
+    </p>
+    <p style="margin:0">Source at <a href="https://github.com/jamessuuu/orphanage">github.com/jamessuuu/orphanage</a> · MIT</p>
+  </div>
+</footer>
+
 </body>
 </html>
